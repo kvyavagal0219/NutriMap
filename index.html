@@ -1,0 +1,500 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Community Access Map</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <style>
+    * { box-sizing: border-box; font-family: 'Segoe UI', Arial, sans-serif; }
+    body { margin: 0; }
+
+    #map { height: calc(100vh - 130px); width: 100%; }
+
+    nav {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 16px 40px;
+      border-bottom: 1px solid #eee;
+    }
+    nav .logo { font-weight: bold; font-size: 1.2em; color: #2e7d32; }
+    nav button {
+      background: none;
+      border: none;
+      font-size: 1em;
+      margin-left: 24px;
+      cursor: pointer;
+      color: #333;
+    }
+    nav button:hover { color: #2e7d32; }
+
+    .hero {
+      text-align: center;
+      padding: 80px 20px;
+      background: linear-gradient(#f4fbf4, #ffffff);
+    }
+    .hero h1 { font-size: 2.5em; margin-bottom: 10px; }
+    .hero h1 span { color: #2e7d32; }
+    .hero p { color: #555; max-width: 500px; margin: 0 auto 30px; }
+    .hero button {
+      background: #2e7d32;
+      color: white;
+      border: none;
+      padding: 14px 28px;
+      border-radius: 8px;
+      font-size: 1em;
+      cursor: pointer;
+    }
+
+    .features {
+      display: flex;
+      justify-content: center;
+      gap: 30px;
+      padding: 40px 20px 80px;
+      flex-wrap: wrap;
+    }
+    .feature-card {
+      background: #f9f9f9;
+      border-radius: 12px;
+      padding: 24px;
+      width: 220px;
+      text-align: center;
+    }
+    .feature-card .icon { font-size: 1.8em; margin-bottom: 10px; }
+
+    /* Map toolbar: search + filter pills */
+    .map-toolbar {
+      padding: 14px 20px;
+      border-bottom: 1px solid #eee;
+    }
+    .map-toolbar input {
+      width: 100%;
+      max-width: 500px;
+      padding: 10px 14px;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      font-size: 1em;
+      margin-bottom: 10px;
+      display: block;
+    }
+    .filter-pills {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .pill {
+      padding: 8px 16px;
+      border-radius: 20px;
+      border: 1px solid #ddd;
+      background: white;
+      cursor: pointer;
+      font-size: 0.9em;
+      color: #333;
+    }
+    .pill.active {
+      background: #2e7d32;
+      color: white;
+      border-color: #2e7d32;
+    }
+
+    .about-content { padding: 40px; max-width: 700px; margin: 0 auto; }
+
+    /* Popup styling */
+    .popup-fav-btn {
+      background: none;
+      border: none;
+      cursor: pointer;
+      font-size: 1.3em;
+      float: right;
+      line-height: 1;
+    }
+    .popup-title { font-size: 1.05em; margin-bottom: 4px; }
+    .popup-row { margin: 4px 0; font-size: 0.9em; }
+    .popup-row b { color: #444; }
+    .popup-link { display: inline-block; margin-top: 6px; margin-right: 10px; font-size: 0.9em; }
+
+    /* Favorites list page */
+    .favorites-content { padding: 30px 40px; max-width: 700px; margin: 0 auto; }
+    .fav-item {
+      border: 1px solid #eee;
+      border-radius: 10px;
+      padding: 14px 18px;
+      margin-bottom: 12px;
+    }
+    .fav-item h4 { margin: 0 0 6px; }
+    .fav-empty { color: #777; }
+  </style>
+</head>
+<body>
+
+  <nav>
+    <div class="logo">🌿 [Your App Name]</div>
+    <div>
+      <button onclick="showPage('home')">Home</button>
+      <button onclick="showPage('map')">Find Resources</button>
+      <button onclick="showPage('favorites')">♥ Favorites</button>
+      <button onclick="showPage('about')">About</button>
+    </div>
+  </nav>
+
+  <div id="home" class="page">
+    <div class="hero">
+      <h1>Find <span>Food & Care</span> Near You</h1>
+      <p>Locate food pantries, SNAP-matching farmers markets, and free clinics across your community — all in one place.</p>
+      <button onclick="showPage('map')">Get Started</button>
+    </div>
+
+    <div class="features">
+      <div class="feature-card">
+        <div class="icon">🥫</div>
+        <h3>Food Pantries</h3>
+        <p>Find pantries near you</p>
+      </div>
+      <div class="feature-card">
+        <div class="icon">🛒</div>
+        <h3>SNAP Match</h3>
+        <p>Stretch your benefits further</p>
+      </div>
+      <div class="feature-card">
+        <div class="icon">🩺</div>
+        <h3>Free Clinics</h3>
+        <p>Access care, no cost</p>
+      </div>
+    </div>
+  </div>
+
+  <div id="about" class="page" style="display:none;">
+    <div class="about-content">
+      <h2>About This App</h2>
+      <p>We built this to help families in our district quickly find food and healthcare resources they may not know are available.</p>
+    </div>
+  </div>
+
+  <div id="favorites" class="page" style="display:none;">
+    <div class="favorites-content">
+      <h2>Your Favorite Locations</h2>
+      <div id="favoritesList"></div>
+    </div>
+  </div>
+
+  <div id="map-page" class="page" style="display:none;">
+    <div class="map-toolbar">
+      <input type="text" id="searchBox" placeholder="Search resources..." onkeyup="applyFilters()">
+      <div class="filter-pills">
+        <button class="pill active" data-cat="all" onclick="setCategory('all', this)">All</button>
+        <button class="pill" data-cat="pantry" onclick="setCategory('pantry', this)">Food Pantries</button>
+        <button class="pill" data-cat="snap" onclick="setCategory('snap', this)">SNAP Markets</button>
+        <button class="pill" data-cat="clinic" onclick="setCategory('clinic', this)">Clinics</button>
+      </div>
+    </div>
+    <div id="map"></div>
+  </div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script>
+    function showPage(name) {
+      document.querySelectorAll('.page').forEach(p => p.style.display = 'none');
+      const target = name === 'map' ? 'map-page' : name;
+      document.getElementById(target).style.display = 'block';
+      if (name === 'map') {
+        setTimeout(() => map.invalidateSize(), 100);
+      }
+      if (name === 'favorites') {
+        renderFavoritesPage();
+      }
+    }
+
+    // Map init
+    const map = L.map('map').setView([35.4, -81.6], 8); // Centered to cover Charlotte + mountain region
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; OpenStreetMap contributors'
+    }).addTo(map);
+
+    const colors = { pantry: '#e65100', snap: '#2e7d32', clinic: '#1565c0' };
+
+    // NOTE: entries marked APPROX did not have coordinates in the source
+    // spreadsheet. These use estimated town-center coordinates and MUST
+    // be verified/corrected before final submission.
+    const locations = [
+      // --- Food Pantries (sample - expand with your research) ---
+      { id: "pantry-1", name: "Second Harvest Food Bank", category: "pantry", lat: 35.2482, lng: -80.8093,
+        address: "Charlotte, NC", dates: "Open Mon-Fri 9am-4pm", eligibility: "", notes: "", programs: "", website: "" },
+
+      // --- SNAP Double Bucks locations (from your spreadsheet) ---
+      { id: "snap-1", name: "Charlotte Regional Farmers Market", category: "snap", lat: 35.187431, lng: -80.909790,
+        address: "1801 Yorkmont Rd, Charlotte, NC 28217", dates: "Every other Saturday, 8am-12:30pm",
+        eligibility: "SNAP Double Bucks", notes: "$50 match, up to $100 in tokens", programs: "",
+        website: "https://www.ncagr.gov/news/events/snapebt-double-bucks-charlotte-regional-farmers-market-13" },
+
+      { id: "snap-2", name: "Davidson Farmers Market", category: "snap", lat: 35.542086, lng: -80.950470,
+        address: "120 S Main St, Davidson, NC 28036", dates: "Every Saturday, April - Thanksgiving, 9am-Noon",
+        eligibility: "SNAP Double Bucks; low-cost transport available for seniors", notes: "$50 match, up to $100 in tokens", programs: "",
+        website: "https://www.davidsonfarmersmarket.org/information" },
+
+      { id: "snap-3", name: "Deep Roots CPS Farm Stand", category: "snap", lat: 35.3066, lng: -80.8994,
+        address: "2401 Primm Rd, Charlotte, NC", dates: "June-Oct. Shop in person: 1st & 3rd Sunday, 12-3pm. Pre-order pickup: Tue & Thu, 10am-3pm",
+        eligibility: "SNAP Double Bucks", notes: "$50 match, up to $100 in tokens; online ordering available", programs: "",
+        website: "https://www.deeprootscpsfarm.com/" },
+
+      { id: "snap-4", name: "Huntersville Growers' Market", category: "snap", lat: 35.4111, lng: -80.8427,
+        address: "201 Huntersville-Concord Rd, Huntersville, NC 28078", dates: "May 2 - Aug 29, 2026, Saturdays 8am-12pm",
+        eligibility: "SNAP Double Bucks", notes: "$50 match, up to $100 in tokens", programs: "Patchwork Urban Farms/Patchwork Alliance",
+        website: "https://www.facebook.com/GrowersMkt/" },
+
+      { id: "snap-5", name: "Matthews Community Farmers Market", category: "snap", lat: 35.1164, lng: -80.7215,
+        address: "188 N. Trade St, Matthews, NC 28105",
+        dates: "Year-round Saturdays. Main season 4/12/25-11/22/25, 8am-12pm. Winter season 12/7/24-4/5/25, 9am-11am",
+        eligibility: "SNAP Double Bucks", notes: "$50 match, up to $100 in tokens", programs: "",
+        website: "https://www.matthewsfarmersmarket.com/" },
+
+      { id: "snap-6", name: "North Meck Community Farmers Market", category: "snap", lat: 35.4868, lng: -80.8605,
+        address: "21445 Catawba Ave, Cornelius, NC 28031 (behind Town Hall)",
+        dates: "May 6 - Sept 30, 2026. Wednesdays 9am-12pm; last Wednesday of month 5-7pm",
+        eligibility: "SNAP Double Bucks", notes: "$50 match, up to $100 in tokens", programs: "",
+        website: "https://www.charlottefoodpolicy.com/nmcfm" },
+
+      { id: "snap-7", name: "Pascuales' Farm", category: "snap", lat: 35.2855, lng: -80.6828,
+        address: "11237 Plaza Rd Extension, Charlotte, NC 28215",
+        dates: "Tue-Sat 10am-6pm (closed Mon & Sun)",
+        eligibility: "SNAP Double Bucks", notes: "$50 match, up to $100 in tokens", programs: "",
+        website: "https://www.pascualesfarm.com/" },
+
+      { id: "snap-8", name: "Small City Farm", category: "snap", lat: 35.3017, lng: -80.9160,
+        address: "1401 Auten Road, Charlotte, NC 28216",
+        dates: "Opens Memorial Day Weekend 2026. Closed July 4th, Sept 5th, Nov 28th",
+        eligibility: "SNAP Double Bucks", notes: "$50 match, up to $100 in tokens", programs: "",
+        website: "https://smallcityfarm.com/home-and-contact" },
+
+      { id: "snap-9", name: "South End Farmers Market", category: "snap", lat: 35.2093, lng: -80.8609,
+        address: "2000 South Blvd, Charlotte, NC 28203", dates: "Every Saturday, 8am-1pm",
+        eligibility: "SNAP Double Bucks", notes: "$50 match, up to $100 in tokens", programs: "",
+        website: "https://southendmkt.com/" },
+
+      { id: "snap-10", name: "Uptown Farmers Market", category: "snap", lat: 35.2254, lng: -80.8326,
+        address: "300 S. Davidson St, Charlotte, NC 28202",
+        dates: "Saturdays only. Winter Market Jan 10-Mar 14 (10am-12pm). Spring Market Apr 11-Dec 12 (8am-12:30pm)",
+        eligibility: "SNAP Double Bucks", notes: "$50 match, up to $100 in tokens. 3rd week of every month: triple SNAP bucks", programs: "",
+        website: "" },
+
+      { id: "snap-11", name: "Ashe Co Farmers Market", category: "snap", lat: 36.4046, lng: -81.4901,
+        address: "108 BackStreet, West Jefferson, NC 28694 (APPROX coordinates)",
+        dates: "April-October, Saturdays, 8am-1pm",
+        eligibility: "SNAP Double Bucks", notes: "$20 match, up to $40 in tokens", programs: "WIC cards $30; Senior FMNP vouchers $50",
+        website: "" },
+
+      { id: "snap-12", name: "Winter King Street Market", category: "snap", lat: 36.2168, lng: -81.6746,
+        address: "252 Poplar Grove Rd, Boone, NC (APPROX coordinates)",
+        dates: "Saturdays 10am-1pm, December-March",
+        eligibility: "SNAP Double Bucks", notes: "Double up to $75/day, so $150 in tokens", programs: "",
+        website: "https://www.brwia.org/doubleup.html#how" },
+
+      { id: "snap-13", name: "High Country Food Hub", category: "snap", lat: 36.2168, lng: -81.6746,
+        address: "252 Poplar Grove Rd, Boone, NC (APPROX coordinates)",
+        dates: "Order online Thu-Mon, pickup Wednesday, year-round",
+        eligibility: "Discounted produce for SNAP-eligible customers", notes: "50% off order for SNAP-eligible people; pickup at select locations", programs: "",
+        website: "https://www.highcountryfoodhub.org/" },
+
+      { id: "snap-14", name: "King Street Market", category: "snap", lat: 36.2168, lng: -81.6746,
+        address: "126 Poplar Grove Connector, Boone, NC (APPROX coordinates)",
+        dates: "Tuesdays 3:30pm-6:30pm, May-October",
+        eligibility: "SNAP Double Bucks", notes: "Double up to $75/day, so $150 in tokens", programs: "",
+        website: "https://www.brwia.org/doubleup.html#how" },
+
+      { id: "snap-15", name: "Watauga County Farmers' Market", category: "snap", lat: 36.2168, lng: -81.6746,
+        address: "591 Horn in the West Dr, Boone, NC (APPROX coordinates)",
+        dates: "Saturdays 8am-1pm, April-November",
+        eligibility: "SNAP Double Bucks", notes: "Double up to $75/day, so $150 in tokens", programs: "",
+        website: "https://www.brwia.org/doubleup.html#how" },
+
+      { id: "snap-16", name: "French Broad Food Coop", category: "snap", lat: 35.5951, lng: -82.5515,
+        address: "90 Biltmore Ave, Asheville, NC 28801 (APPROX coordinates)",
+        dates: "Daily 8am-8pm",
+        eligibility: "SNAP Double Bucks", notes: "$20 match, up to $40 in tokens", programs: "",
+        website: "https://frenchbroadfood.coop/dufb/" },
+
+      { id: "snap-17", name: "Haywood's Historic Farmers Market", category: "snap", lat: 35.4887, lng: -82.9887,
+        address: "250 Pigeon St, Waynesville, NC 28786 (APPROX coordinates)",
+        dates: "April-December, Saturdays 9am-12pm",
+        eligibility: "SNAP Double Bucks", notes: "$20 match, up to $40 in tokens", programs: "",
+        website: "https://waynesvillefarmersmarket.com/snapebt/" },
+
+      { id: "snap-18", name: "Hendersonville Farmers Market", category: "snap", lat: 35.3187, lng: -82.4610,
+        address: "650 Maple Street, Hendersonville, NC 28792 (APPROX coordinates)",
+        dates: "Saturdays 9am-12pm, April 4 - December 12",
+        eligibility: "SNAP Double Bucks", notes: "$20 match, up to $40 in tokens", programs: "",
+        website: "" },
+
+      { id: "snap-19", name: "Jackson County Farmers Market", category: "snap", lat: 35.3712, lng: -83.2216,
+        address: "110 Railroad Ave, Sylva, NC 28779 (APPROX coordinates)",
+        dates: "Year-round, Saturdays 9am-12pm",
+        eligibility: "SNAP Double Bucks", notes: "$20 match, up to $40 in tokens", programs: "",
+        website: "https://jacksoncountyfarmersmarket.org/" },
+
+      { id: "snap-20", name: "Jarrett's IGA", category: "snap", lat: 35.1435, lng: -82.9737,
+        address: "191 Main St, Rosman, NC 28772 (APPROX coordinates)",
+        dates: "Mon-Sat 7am-10pm; Sun 8am-10pm",
+        eligibility: "SNAP EBT coupons", notes: "Grocery store", programs: "",
+        website: "https://jarrett.iga.com/" },
+
+      { id: "snap-21", name: "Mars Hill Farmers Market", category: "snap", lat: 35.8235, lng: -82.5540,
+        address: "50 College St, Mars Hill, NC 28754 (APPROX coordinates)",
+        dates: "Saturdays ~10am-1pm, April-October",
+        eligibility: "SNAP Double Bucks", notes: "$20 match, up to $40 in tokens; double up to $20 Sun Bucks for $40 total", programs: "WIC/FMNP",
+        website: "https://marshillfarmersandartisansmarket.com/" },
+
+      { id: "snap-22", name: "Mills River Farmers Market", category: "snap", lat: 35.4318, lng: -82.5679,
+        address: "94 School House Rd, Mills River, NC 28759 (APPROX coordinates)",
+        dates: "May-October, Saturdays 8am-12pm",
+        eligibility: "SNAP Double Bucks", notes: "$20 match, up to $40 in tokens", programs: "",
+        website: "https://millsriverfarmmarket.com/our-programs/" },
+
+      { id: "snap-23", name: "Murphy Farmers Market", category: "snap", lat: 35.0848, lng: -84.0294,
+        address: "4 Railroad St, Murphy, NC 28906 (APPROX coordinates)",
+        dates: "Saturdays 9am-1pm",
+        eligibility: "SNAP Double Bucks", notes: "$20 match, up to $40 in tokens", programs: "",
+        website: "https://www.townofmurphync.com/main-street-murphy/page/murphy-farmers-market-1" },
+
+      { id: "snap-24", name: "Rutherford BARN (Rutherford County Farmers Market)", category: "snap", lat: 35.3326, lng: -81.8656,
+        address: "172 Park Square, Forest City, NC 28043 (APPROX coordinates)",
+        dates: "Winter: Nov-Mar, Sat 10am-2pm. Summer: Apr-Oct, 8am-12pm",
+        eligibility: "SNAP Double Bucks", notes: "$20 match, up to $40 in tokens", programs: "",
+        website: "" },
+
+      { id: "snap-25", name: "TRACTOR Food & Farms", category: "snap", lat: 35.9187, lng: -82.3037,
+        address: "54 Ferguson Hill Rd, Burnsville, NC 28714 (APPROX coordinates)",
+        dates: "March-December, Mon-Fri 8:30am-5pm",
+        eligibility: "SNAP Double Bucks", notes: "$20 match, up to $40 in tokens", programs: "",
+        website: "https://tractorfoodandfarms.com/" },
+
+      { id: "snap-26", name: "Transylvania Farmers Market", category: "snap", lat: 35.2334, lng: -82.7343,
+        address: "200 East Main St, Brevard, NC 28712 (APPROX coordinates)",
+        dates: "Apr-Nov Saturdays 9am-12pm; Dec-Mar Saturdays 10am-12pm",
+        eligibility: "SNAP Double Bucks", notes: "$20 match, up to $40 in tokens", programs: "",
+        website: "" },
+
+      { id: "snap-27", name: "Saluda Tailgate Market", category: "snap", lat: 35.2318, lng: -82.3390,
+        address: "Saluda Elementary School, 214 E. Main Street, Saluda, NC (APPROX coordinates)",
+        dates: "Early May - late October, Fridays 4pm-6pm",
+        eligibility: "SNAP Double Bucks", notes: "$20 match, up to $40 in tokens", programs: "",
+        website: "https://saluda.com/?s=farmers+market" },
+
+      // --- Free / Charitable Clinics ---
+      { id: "clinic-1", name: "Care Ring Clinic", category: "clinic", lat: 35.2360, lng: -80.8280,
+        address: "1514 N. Graham St, Charlotte, NC 28206", dates: "Mon-Fri 8am-5pm", eligibility: "Open to everyone, no income/residency proof required",
+        notes: "(704) 375-0172", programs: "", website: "https://careringnc.org/low-cost-clinic/" },
+
+      { id: "clinic-2", name: "Hope Street Free Clinic", category: "clinic", lat: 35.3450, lng: -80.8720,
+        address: "4100 Johnston Oehler Road, Charlotte, NC", dates: "", eligibility: "Free to all, no ID or immigration paperwork required",
+        notes: "(980) 220-2306", programs: "", website: "" },
+
+      { id: "clinic-3", name: "Matthews Free Medical Clinic", category: "clinic", lat: 35.1168, lng: -80.7231,
+        address: "Matthews, NC", dates: "", eligibility: "Low-income, uninsured patients in Mecklenburg & Union Counties",
+        notes: "(704) 841-8882", programs: "", website: "https://matthewsfmc.org/" },
+
+      { id: "clinic-4", name: "Mecklenburg County Public Health", category: "clinic", lat: 35.1740, lng: -80.8340,
+        address: "249 Billingsley Rd, Charlotte, NC 28211", dates: "Mon-Fri 8am-5pm", eligibility: "Open to the public",
+        notes: "(704) 336-6500", programs: "", website: "" }
+    ];
+
+    // --- Favorites (persisted in the visitor's browser) ---
+    function getFavorites() {
+      const raw = localStorage.getItem('favoriteLocations');
+      return raw ? JSON.parse(raw) : [];
+    }
+
+    function isFavorite(id) {
+      return getFavorites().includes(id);
+    }
+
+    function toggleFavorite(id) {
+      let favs = getFavorites();
+      if (favs.includes(id)) {
+        favs = favs.filter(f => f !== id);
+      } else {
+        favs.push(id);
+      }
+      localStorage.setItem('favoriteLocations', JSON.stringify(favs));
+      // Refresh whatever's currently showing so the heart icon updates
+      applyFilters();
+      if (document.getElementById('favorites').style.display === 'block') {
+        renderFavoritesPage();
+      }
+    }
+
+    function buildPopupHtml(loc) {
+      const heart = isFavorite(loc.id) ? '♥' : '♡';
+      let html = `<div class="popup-title"><b>${loc.name}</b>
+        <button class="popup-fav-btn" onclick="toggleFavorite('${loc.id}')" title="Favorite this location">${heart}</button>
+      </div>`;
+      if (loc.address) html += `<div class="popup-row"><b>Address:</b> ${loc.address}</div>`;
+      if (loc.dates) html += `<div class="popup-row"><b>Dates/Hours:</b> ${loc.dates}</div>`;
+      if (loc.eligibility) html += `<div class="popup-row"><b>Eligibility:</b> ${loc.eligibility}</div>`;
+      if (loc.notes) html += `<div class="popup-row"><b>Details:</b> ${loc.notes}</div>`;
+      if (loc.programs) html += `<div class="popup-row"><b>Additional Programs:</b> ${loc.programs}</div>`;
+
+      const directionsUrl = `https://www.google.com/maps/dir/?api=1&destination=${loc.lat},${loc.lng}`;
+      html += `<a class="popup-link" href="${directionsUrl}" target="_blank">Get Directions</a>`;
+      if (loc.website) {
+        html += `<a class="popup-link" href="${loc.website}" target="_blank">Website</a>`;
+      }
+      return html;
+    }
+
+    let markers = [];
+
+    function renderMarkers(list) {
+      markers.forEach(m => map.removeLayer(m));
+      markers = [];
+      list.forEach(loc => {
+        const marker = L.circleMarker([loc.lat, loc.lng], {
+          radius: 8,
+          color: colors[loc.category],
+          fillColor: colors[loc.category],
+          fillOpacity: 0.9
+        }).addTo(map);
+
+        marker.bindPopup(buildPopupHtml(loc));
+        markers.push(marker);
+      });
+    }
+
+    let activeCategory = 'all';
+
+    function setCategory(cat, btn) {
+      activeCategory = cat;
+      document.querySelectorAll('.pill').forEach(p => p.classList.remove('active'));
+      btn.classList.add('active');
+      applyFilters();
+    }
+
+    function applyFilters() {
+      const searchTerm = document.getElementById('searchBox').value.toLowerCase();
+      const filtered = locations.filter(loc => {
+        const matchesCategory = activeCategory === 'all' || loc.category === activeCategory;
+        const matchesSearch = loc.name.toLowerCase().includes(searchTerm);
+        return matchesCategory && matchesSearch;
+      });
+      renderMarkers(filtered);
+    }
+
+    function renderFavoritesPage() {
+      const favIds = getFavorites();
+      const container = document.getElementById('favoritesList');
+      if (favIds.length === 0) {
+        container.innerHTML = '<p class="fav-empty">You haven\'t favorited any locations yet. Tap the ♡ on a map pin to save it here.</p>';
+        return;
+      }
+      const favLocations = locations.filter(loc => favIds.includes(loc.id));
+      container.innerHTML = favLocations.map(loc => `
+        <div class="fav-item">
+          <h4>${loc.name} <button class="popup-fav-btn" onclick="toggleFavorite('${loc.id}')" title="Remove favorite">♥</button></h4>
+          ${loc.address ? `<div class="popup-row"><b>Address:</b> ${loc.address}</div>` : ''}
+          ${loc.dates ? `<div class="popup-row"><b>Dates/Hours:</b> ${loc.dates}</div>` : ''}
+          ${loc.eligibility ? `<div class="popup-row"><b>Eligibility:</b> ${loc.eligibility}</div>` : ''}
+        </div>
+      `).join('');
+    }
+
+    renderMarkers(locations);
+  </script>
+</body>
+</html>
