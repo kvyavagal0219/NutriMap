@@ -161,7 +161,7 @@
   <div id="home" class="page">
     <div class="hero">
       <h1>Find <span>Food &amp; Care</span> Near You</h1>
-      <p>Locate food pantries, SNAP-matching farmers markets, and free clinics across North Carolina.</p>
+      <p>Locate food pantries, SNAP-matching farmers markets, and free clinics across North Carolina — all in one place.</p>
       <button onclick="showPage('map')">Get Started</button>
     </div>
 
@@ -303,11 +303,12 @@
       }
     }
 
-    function buildPopupHtml(loc) {
+    function buildPopupHtml(loc, openNow) {
       const heart = isFavorite(loc.id) ? '&#9829;' : '&#9825;';
       let html = `<div class="popup-title"><b>${loc.name}</b>
         <button class="popup-fav-btn" onclick="toggleFavorite('${loc.id}')" title="Favorite this location">${heart}</button>
       </div>`;
+      if (openNow) html += `<div class="popup-row" style="color:#b8860b;"><b>&#9679; Open now</b> (based on posted hours)</div>`;
       if (loc.address) html += `<div class="popup-row"><b>Address:</b> ${loc.address}</div>`;
       if (loc.county && loc.county !== 'Unknown') html += `<div class="popup-row"><b>County:</b> ${loc.county}</div>`;
       if (loc.dates) html += `<div class="popup-row"><b>Dates/Hours:</b> ${loc.dates}</div>`;
@@ -322,18 +323,95 @@
       return html;
     }
 
+    // --- Best-effort "open now" detection ---
+    // Parses free-text hours like "Monday-Friday 9am-5pm" or "Saturdays 8am-1pm".
+    // Irregular schedules ("1st and 3rd Sunday", "by appointment only", etc.)
+    // can't be reliably parsed, so those locations simply won't get a ring
+    // rather than risk showing a wrong answer.
+    const DAY_ABBR = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
+
+    function parseDaysFromText(text) {
+      const lower = text.toLowerCase();
+      const found = new Set();
+
+      // Ranges like "Monday-Friday" or "Mon-Thu"
+      const rangeRegex = /(sun|mon|tue|wed|thu|fri|sat)[a-z]*\s*-\s*(sun|mon|tue|wed|thu|fri|sat)[a-z]*/g;
+      let m;
+      while ((m = rangeRegex.exec(lower)) !== null) {
+        const startIdx = DAY_ABBR.indexOf(m[1]);
+        const endIdx = DAY_ABBR.indexOf(m[2]);
+        if (startIdx !== -1 && endIdx !== -1) {
+          if (startIdx <= endIdx) {
+            for (let i = startIdx; i <= endIdx; i++) found.add(i);
+          } else {
+            for (let i = startIdx; i <= 6; i++) found.add(i);
+            for (let i = 0; i <= endIdx; i++) found.add(i);
+          }
+        }
+      }
+
+      // Standalone day mentions, e.g. "Saturdays", "Tuesday and Thursday"
+      DAY_ABBR.forEach((abbr, idx) => {
+        const wordRegex = new RegExp('\\b' + abbr + '[a-z]*\\b', 'g');
+        if (wordRegex.test(lower)) found.add(idx);
+      });
+
+      return found;
+    }
+
+    function parseTimeRangeFromText(text) {
+      const regex = /(\d{1,2})(?::(\d{2}))?\s*(am|pm)\s*[-–—to]+\s*(\d{1,2})(?::(\d{2}))?\s*(am|pm)/i;
+      const m = text.match(regex);
+      if (!m) return null;
+
+      function toMinutes(hour, minute, meridiem) {
+        hour = parseInt(hour, 10);
+        minute = minute ? parseInt(minute, 10) : 0;
+        meridiem = meridiem.toLowerCase();
+        if (meridiem === 'pm' && hour !== 12) hour += 12;
+        if (meridiem === 'am' && hour === 12) hour = 0;
+        return hour * 60 + minute;
+      }
+
+      const startMinutes = toMinutes(m[1], m[2], m[3]);
+      const endMinutes = toMinutes(m[4], m[5], m[6]);
+      return { startMinutes, endMinutes };
+    }
+
+    function isOpenNow(loc) {
+      if (!loc.dates) return false;
+      const lower = loc.dates.toLowerCase();
+      // Bail out on phrasing that signals we can't trust a simple parse
+      if (/appointment only|call to confirm|check .* for current|by appointment/.test(lower)) {
+        return false;
+      }
+
+      const days = parseDaysFromText(loc.dates);
+      const timeRange = parseTimeRangeFromText(loc.dates);
+      if (days.size === 0 || !timeRange) return false;
+
+      const now = new Date();
+      const currentDay = now.getDay(); // 0 = Sunday
+      const currentMinutes = now.getHours() * 60 + now.getMinutes();
+
+      if (!days.has(currentDay)) return false;
+      return currentMinutes >= timeRange.startMinutes && currentMinutes <= timeRange.endMinutes;
+    }
+
     let markers = [];
     function renderMarkers(list) {
       markers.forEach(m => map.removeLayer(m));
       markers = [];
       list.forEach(loc => {
+        const openNow = isOpenNow(loc);
         const marker = L.circleMarker([loc.lat, loc.lng], {
           radius: 7,
-          color: colors[loc.category],
+          color: openNow ? '#f9c400' : colors[loc.category],
+          weight: openNow ? 4 : 1,
           fillColor: colors[loc.category],
           fillOpacity: 0.9
         }).addTo(map);
-        marker.bindPopup(buildPopupHtml(loc));
+        marker.bindPopup(buildPopupHtml(loc, openNow));
         markers.push(marker);
       });
       document.getElementById('resultsCount').textContent =
